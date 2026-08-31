@@ -79,7 +79,7 @@ const player = (name, dealer = false) => ({
 const view = (r) => ({
   ...r,
   deck: undefined,
-  remainingCards: r.deck.length || (r.shoeDecks || 4) * 52,
+  remainingCards: r.shoeStarted ? r.deck.length : (r.shoeDecks || 4) * 52,
   players: r.players.map((p) => ({ ...p, key: undefined, sid: undefined })),
 });
 const emit = (r) => io.to(r.code).emit("room", view(r));
@@ -120,8 +120,11 @@ function finish(r) {
       dealer.balance -= delta;
     }
   r.phase = "result";
+  if (r.deck.length <= r.cutRemaining) r.shufflePending = true;
   r.resultEndsAt = Date.now() + 10_000;
-  r.message = "จบขาแล้ว · กลับหน้าเตรียมตัวใน 10 วินาที";
+  r.message = r.shufflePending
+    ? "ถึง Cut Card แล้ว · จะสับ Shoe ใหม่ก่อนขาถัดไป"
+    : "จบขาแล้ว · กลับหน้าเตรียมตัวใน 10 วินาที";
   r.history.unshift({
     round: r.round,
     at: Date.now(),
@@ -139,6 +142,7 @@ function finish(r) {
     if (r.phase !== "result" || r.round !== finishedRound) return;
     r.phase = "lobby";
     r.resultEndsAt = null;
+    r.readyDeadline = Date.now() + 60_000;
     r.queue = [];
     r.turn = 0;
     r.players.forEach((x) => {
@@ -186,6 +190,11 @@ io.on("connection", (socket) => {
       dealerRequest: null,
       phase: "lobby",
       shoeDecks: 4,
+      shoeStarted: false,
+      shoeNumber: 0,
+      cutRemaining: 52,
+      shufflePending: true,
+      readyDeadline: Date.now() + 60_000,
       resultEndsAt: null,
       round: 0,
       players: [p],
@@ -282,6 +291,8 @@ io.on("connection", (socket) => {
       next.role = "dealer";
       r.dealerId = next.id;
       r.dealerRequest = null;
+      r.readyDeadline = Date.now() + 60_000;
+      r.players.forEach((x) => (x.ready = false));
       r.message = `${next.name} เป็นเจ้ามือแล้ว`;
       emit(r);
     } else if (a.type === "denyDealer") {
@@ -310,6 +321,10 @@ io.on("connection", (socket) => {
         return fail("เฉพาะเจ้ามือเลือกจำนวนสำรับก่อนเริ่มได้");
       if (![1, 2, 4, 6, 8].includes(n)) return fail("จำนวนสำรับไม่ถูกต้อง");
       r.shoeDecks = n;
+      r.cutRemaining = Math.ceil(n * 52 * 0.25);
+      r.deck = [];
+      r.shoeStarted = false;
+      r.shufflePending = true;
       p.ready = false;
       emit(r);
     } else if (a.type === "ready") {
@@ -321,20 +336,34 @@ io.on("connection", (socket) => {
       if (r.phase !== "lobby") return fail("เกมเริ่มแล้ว");
       if (p.id !== r.dealerId) return fail("เจ้ามือเท่านั้นที่เริ่มได้");
       if (r.players.length < 2) return fail("ต้องมีผู้เล่นอย่างน้อย 1 คน");
-      if (r.players.some((x) => !x.ready))
+      if (!p.ready) return fail("เจ้ามือต้องกดพร้อมก่อนเริ่ม");
+      const readyExpired = Date.now() >= r.readyDeadline;
+      if (!readyExpired && r.players.some((x) => !x.ready))
         return fail("ทุกคนต้องกดพร้อมก่อนเริ่ม");
-      r.deck = newDeck(r.shoeDecks);
+      const activePlayers = r.players.filter((x) => x.ready);
+      if (!activePlayers.some((x) => x.id !== r.dealerId))
+        return fail("ต้องมีขาเล่นที่กดพร้อมอย่างน้อย 1 คน");
+      if (!r.shoeStarted || r.shufflePending) {
+        r.deck = newDeck(r.shoeDecks);
+        r.shoeStarted = true;
+        r.shufflePending = false;
+        r.shoeNumber++;
+      }
       r.round++;
       r.phase = "playing";
       r.queue = [];
       r.players.forEach((x) => {
+        if (!x.ready) {
+          x.hands = [];
+          return;
+        }
         x.hands =
           x.id === r.dealerId
             ? [makeHand(0)]
             : Array.from({ length: x.spots }, () => makeHand(x.bet));
         for (const h of x.hands) h.cards = [r.deck.pop(), r.deck.pop()];
       });
-      for (const x of r.players.filter((x) => x.id !== r.dealerId))
+      for (const x of activePlayers.filter((x) => x.id !== r.dealerId))
         for (const h of x.hands) r.queue.push({ playerId: x.id, handId: h.id });
       r.queue.push({
         playerId: r.dealerId,
