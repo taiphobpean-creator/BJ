@@ -26,8 +26,10 @@ const ranks = [
 ];
 const uid = () => crypto.randomUUID();
 const roomCode = () => Math.random().toString(36).slice(2, 7).toUpperCase();
-const newDeck = () => {
-  const d = suits.flatMap((s) => ranks.map((r) => ({ r, s })));
+const newDeck = (shoeDecks = 4) => {
+  const d = Array.from({ length: shoeDecks }, () =>
+    suits.flatMap((s) => ranks.map((r) => ({ r, s }))),
+  ).flat();
   for (let i = d.length - 1; i; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [d[i], d[j]] = [d[j], d[i]];
@@ -58,6 +60,7 @@ const makeHand = (bet) => ({
   done: false,
   doubled: false,
   split: false,
+  surrendered: false,
   result: null,
 });
 const player = (name, dealer = false) => ({
@@ -70,11 +73,13 @@ const player = (name, dealer = false) => ({
   bet: 10,
   spots: 1,
   hands: [],
+  ready: false,
   offline: false,
 });
 const view = (r) => ({
   ...r,
   deck: undefined,
+  remainingCards: r.deck.length || (r.shoeDecks || 4) * 52,
   players: r.players.map((p) => ({ ...p, key: undefined, sid: undefined })),
 });
 const emit = (r) => io.to(r.code).emit("room", view(r));
@@ -90,6 +95,7 @@ function finish(r) {
     dealerBJ = ds === 21 && dh.cards.length === 2;
   for (const p of r.players.filter((x) => x.id !== dealer.id))
     for (const h of p.hands) {
+      if (h.surrendered) continue;
       const ps = score(h),
         natural = ps === 21 && h.cards.length === 2 && !h.split;
       let delta = 0,
@@ -114,7 +120,8 @@ function finish(r) {
       dealer.balance -= delta;
     }
   r.phase = "result";
-  r.message = "จบขาแล้ว";
+  r.resultEndsAt = Date.now() + 10_000;
+  r.message = "จบขาแล้ว · กลับหน้าเตรียมตัวใน 10 วินาที";
   r.history.unshift({
     round: r.round,
     at: Date.now(),
@@ -127,6 +134,20 @@ function finish(r) {
       })),
   });
   emit(r);
+  const finishedRound = r.round;
+  setTimeout(() => {
+    if (r.phase !== "result" || r.round !== finishedRound) return;
+    r.phase = "lobby";
+    r.resultEndsAt = null;
+    r.queue = [];
+    r.turn = 0;
+    r.players.forEach((x) => {
+      x.hands = [];
+      x.ready = false;
+    });
+    r.message = "ทุกคนตั้งค่าและกดพร้อมก่อนเริ่มขาใหม่";
+    emit(r);
+  }, 10_000);
 }
 
 function advance(r) {
@@ -164,6 +185,8 @@ io.on("connection", (socket) => {
       dealerId: p.id,
       dealerRequest: null,
       phase: "lobby",
+      shoeDecks: 4,
+      resultEndsAt: null,
       round: 0,
       players: [p],
       deck: [],
@@ -272,18 +295,35 @@ io.on("connection", (socket) => {
         return fail("วางเดิมพันไม่ได้");
       if (n < 10 || n > 500) return fail("เดิมพันต้องอยู่ระหว่าง 10–500");
       p.bet = n;
+      p.ready = false;
       emit(r);
     } else if (a.type === "spots") {
       const n = Math.floor(+a.value);
       if (r.phase === "playing" || p.id === r.dealerId || n < 1 || n > 3)
         return fail("เลือกได้ 1–3 มือ");
       p.spots = n;
+      p.ready = false;
+      emit(r);
+    } else if (a.type === "shoe") {
+      const n = Math.floor(+a.value);
+      if (p.id !== r.dealerId || r.phase === "playing")
+        return fail("เฉพาะเจ้ามือเลือกจำนวนสำรับก่อนเริ่มได้");
+      if (![1, 2, 4, 6, 8].includes(n)) return fail("จำนวนสำรับไม่ถูกต้อง");
+      r.shoeDecks = n;
+      p.ready = false;
+      emit(r);
+    } else if (a.type === "ready") {
+      if (r.phase !== "lobby") return fail("กดพร้อมได้ในหน้าเตรียมตัว");
+      p.ready = !p.ready;
+      r.message = p.ready ? `${p.name} พร้อมแล้ว` : `${p.name} ยกเลิกพร้อม`;
       emit(r);
     } else if (a.type === "start") {
-      if (!["lobby", "result"].includes(r.phase)) return fail("เกมเริ่มแล้ว");
+      if (r.phase !== "lobby") return fail("เกมเริ่มแล้ว");
       if (p.id !== r.dealerId) return fail("เจ้ามือเท่านั้นที่เริ่มได้");
       if (r.players.length < 2) return fail("ต้องมีผู้เล่นอย่างน้อย 1 คน");
-      r.deck = newDeck();
+      if (r.players.some((x) => !x.ready))
+        return fail("ทุกคนต้องกดพร้อมก่อนเริ่ม");
+      r.deck = newDeck(r.shoeDecks);
       r.round++;
       r.phase = "playing";
       r.queue = [];
@@ -303,7 +343,9 @@ io.on("connection", (socket) => {
       r.turn = 0;
       r.message = `ตาของ ${playerOf(r, current(r).playerId).name}`;
       emit(r);
-    } else if (["hit", "stand", "double", "split"].includes(a.type)) {
+    } else if (
+      ["hit", "stand", "double", "split", "surrender"].includes(a.type)
+    ) {
       const q = current(r),
         h = handOf(r, q);
       if (!q || q.playerId !== p.id) return fail("ยังไม่ถึงตาของคุณ");
@@ -327,6 +369,16 @@ io.on("connection", (socket) => {
         h.doubled = true;
         h.cards.push(r.deck.pop());
         h.done = true;
+        advance(r);
+      } else if (a.type === "surrender") {
+        if (isDealer || h.split || h.cards.length !== 2)
+          return fail("ยอมแพ้ได้เฉพาะไพ่ 2 ใบแรกที่ไม่ได้ Split");
+        const dealer = playerOf(r, r.dealerId);
+        h.surrendered = true;
+        h.done = true;
+        h.result = { label: "ยอมแพ้", delta: -h.bet / 2 };
+        p.balance -= h.bet / 2;
+        dealer.balance += h.bet / 2;
         advance(r);
       } else {
         if (
