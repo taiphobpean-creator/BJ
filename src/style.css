@@ -167,6 +167,7 @@ input {
   color: #8da095;
 }
 .table {
+  position: relative;
   min-height: 590px;
   border: 1px solid #d9ae5540;
   border-radius: 45% 45% 22px 22px/18% 18% 22px 22px;
@@ -504,8 +505,13 @@ input {
   font-size: 15px;
 }
 .hand .points {
-  right: 4px;
-  bottom: 4px;
+  position: static;
+  display: block;
+  width: fit-content;
+  margin: 6px auto 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #071b14;
 }
 .hand .result {
   position: static;
@@ -553,6 +559,61 @@ input {
 .actions .split {
   background: #244e85;
   color: white;
+}
+.actions .surrender {
+  background: #604025;
+  color: #ffe0b1;
+}
+.shoe-count {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  z-index: 2;
+  border: 1px solid #d9ae5540;
+  border-radius: 999px;
+  background: #071b14aa;
+  color: #e8c878;
+  padding: 6px 11px;
+  font-size: 0.75rem;
+}
+.ready-badge {
+  display: inline-block;
+  margin: 5px 0;
+  border: 1px solid #ffffff22;
+  border-radius: 999px;
+  color: #98a89e;
+  padding: 2px 7px;
+  font-size: 0.62rem;
+}
+.ready-badge.ready {
+  border-color: #5add9744;
+  color: #6ee7a2;
+  background: #1c6a4633;
+}
+.shoe-select,
+.countdown {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.shoe-select > span {
+  color: #9bad9f;
+}
+.ready-button.confirmed {
+  border-color: #5add97;
+  background: #17613e;
+  color: #dcffeb;
+}
+.countdown {
+  justify-content: center;
+  border: 1px solid #d9ae5540;
+  border-radius: 12px;
+  background: #10281e;
+  padding: 12px 18px;
+  color: #f3d58f;
+}
+.countdown b {
+  font-size: 1.5rem;
 }
 @keyframes floatEmoji {
   0% {

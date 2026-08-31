@@ -62,6 +62,7 @@ function App() {
     [error, setError] = useState(""),
     [dash, setDash] = useState(true),
     [reactions, setReactions] = useState([]),
+    [clock, setClock] = useState(Date.now()),
     [restoring, setRestoring] = useState(true);
   useEffect(() => {
     socket.on("room", setRoom);
@@ -80,7 +81,9 @@ function App() {
         setRestoring(false);
       });
     else setRestoring(false);
+    const clockTimer = setInterval(() => setClock(Date.now()), 250);
     return () => {
+      clearInterval(clockTimer);
       socket.off("room");
       socket.off("emoji");
     };
@@ -187,7 +190,16 @@ function App() {
       !currentHand?.split &&
       currentHand?.cards.length === 2 &&
       cv(currentHand.cards[0]) === cv(currentHand.cards[1]) &&
-      mine.hands.length < 6;
+      mine.hands.length < 6,
+    surrenderOK =
+      isTurn &&
+      !isDealer &&
+      !currentHand?.split &&
+      currentHand?.cards.length === 2,
+    allReady = room.players.every((p) => p.ready),
+    countdown = room.resultEndsAt
+      ? Math.max(0, Math.ceil((room.resultEndsAt - clock) / 1000))
+      : 0;
   return (
     <main className={"app " + (dash ? "dash-open" : "")}>
       <header>
@@ -215,8 +227,18 @@ function App() {
         </button>
       </nav>
       <section className="table">
+        <div className="shoe-count">
+          กองไพ่ {room.shoeDecks} สำรับ · เหลือ {room.remainingCards} ใบ
+        </div>
         <div className="dealer">
           <PlayerName p={dealer} reactions={reactions} />
+          {room.phase === "lobby" && dealer && (
+            <span
+              className={dealer.ready ? "ready-badge ready" : "ready-badge"}
+            >
+              {dealer.ready ? "พร้อม" : "ยังไม่พร้อม"}
+            </span>
+          )}
           <div className="cards">
             {dealer?.hands?.[0]?.cards.map((c, i) => (
               <Card
@@ -251,6 +273,9 @@ function App() {
                 key={p.id}
               >
                 <PlayerName p={p} reactions={reactions} />
+                <span className={p.ready ? "ready-badge ready" : "ready-badge"}>
+                  {p.ready ? "พร้อม" : "ยังไม่พร้อม"}
+                </span>
                 <small>
                   สุทธิ{" "}
                   <i className={p.balance >= 0 ? "plus" : "minus"}>
@@ -308,7 +333,7 @@ function App() {
             </button>
           </div>
         )}
-        {room.phase !== "playing" && (
+        {room.phase === "lobby" && (
           <>
             <div className="roles">
               <span>บทบาท</span>
@@ -325,6 +350,20 @@ function App() {
                 </button>
               )}
             </div>
+            {isDealer && (
+              <div className="shoe-select">
+                <span>จำนวนสำรับ</span>
+                {[1, 2, 4, 6, 8].map((n) => (
+                  <button
+                    className={room.shoeDecks === n ? "selected" : ""}
+                    onClick={() => act("shoe", n)}
+                    key={n}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
             {!isDealer && (
               <>
                 <div className="spots">
@@ -362,19 +401,28 @@ function App() {
               </>
             )}
             <button
-              className="gold start"
-              disabled={!isDealer}
-              onClick={() => act(room.phase === "result" ? "reset" : "start")}
+              className={
+                mine?.ready ? "ready-button confirmed" : "ready-button"
+              }
+              onClick={() => act("ready")}
             >
-              {room.phase === "result" ? (
-                <>
-                  <RotateCcw /> เตรียมขาใหม่
-                </>
-              ) : (
-                "แจกไพ่ / เริ่มขา"
-              )}
+              {mine?.ready ? "✓ พร้อมแล้ว" : "กดคอนเฟิร์มพร้อม"}
             </button>
+            {isDealer && (
+              <button
+                className="gold start"
+                disabled={!allReady}
+                onClick={() => act("start")}
+              >
+                {allReady ? "แจกไพ่ / เริ่มขา" : "รอทุกคนคอนเฟิร์ม"}
+              </button>
+            )}
           </>
+        )}
+        {room.phase === "result" && (
+          <div className="countdown">
+            กลับหน้าเตรียมตัวใน <b>{countdown}</b> วินาที
+          </div>
         )}
         {room.phase === "playing" && (
           <div className="actions">
@@ -387,6 +435,11 @@ function App() {
             {!isDealer && (
               <button disabled={!isTurn} onClick={() => act("double")}>
                 DOUBLE <small>เดิมพัน ×2</small>
+              </button>
+            )}
+            {surrenderOK && (
+              <button className="surrender" onClick={() => act("surrender")}>
+                SURRENDER <small>ยอมแพ้ −ครึ่งหนึ่ง</small>
               </button>
             )}
             {splitOK && (
