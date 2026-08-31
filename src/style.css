@@ -576,6 +576,50 @@ input {
   padding: 6px 11px;
   font-size: 0.75rem;
 }
+.shoe-count small {
+  display: block;
+  margin-top: 2px;
+  color: #9eaa9f;
+  font-size: 0.62rem;
+}
+.shuffle-warning {
+  width: fit-content;
+  margin: 0 auto 8px;
+  border: 1px solid #ff656566;
+  border-radius: 999px;
+  background: #641b2280;
+  color: #ffaaaa;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  animation: warningPulse 1s infinite alternate;
+}
+.ready-timer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #d9ae5540;
+  border-radius: 10px;
+  background: #10281e;
+  color: #e7ce8b;
+  padding: 9px 12px;
+}
+.ready-timer b {
+  font-size: 1.25rem;
+}
+.ready-timer.expired {
+  border-color: #5add9755;
+  color: #78e8a8;
+}
+@keyframes warningPulse {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+    box-shadow: 0 0 16px #ff555533;
+  }
+}
 .ready-badge {
   display: inline-block;
   margin: 5px 0;

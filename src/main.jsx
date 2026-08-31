@@ -197,6 +197,16 @@ function App() {
       !currentHand?.split &&
       currentHand?.cards.length === 2,
     allReady = room.players.every((p) => p.ready),
+    readyCountdown = room.readyDeadline
+      ? Math.max(0, Math.ceil((room.readyDeadline - clock) / 1000))
+      : 0,
+    readyExpired = readyCountdown === 0,
+    readyPlayerCount = room.players.filter((p) => p.ready).length,
+    canStart =
+      isDealer &&
+      mine?.ready &&
+      (allReady || readyExpired) &&
+      room.players.some((p) => p.id !== room.dealerId && p.ready),
     countdown = room.resultEndsAt
       ? Math.max(0, Math.ceil((room.resultEndsAt - clock) / 1000))
       : 0;
@@ -228,7 +238,9 @@ function App() {
       </nav>
       <section className="table">
         <div className="shoe-count">
-          กองไพ่ {room.shoeDecks} สำรับ · เหลือ {room.remainingCards} ใบ
+          Shoe #{room.shoeNumber || 1} · {room.shoeDecks} สำรับ · เหลือ{" "}
+          {room.remainingCards} ใบ
+          <small>Cut Card ที่ {room.cutRemaining} ใบ</small>
         </div>
         <div className="dealer">
           <PlayerName p={dealer} reactions={reactions} />
@@ -261,6 +273,13 @@ function App() {
           )}
         </div>
         <div className="message">{room.message}</div>
+        {room.shufflePending &&
+          room.shoeStarted &&
+          room.phase !== "playing" && (
+            <div className="shuffle-warning">
+              ถึง Cut Card — จะสับไพ่ใหม่ก่อนเริ่มขาถัดไป
+            </div>
+          )}
         <div className="seats">
           {room.players
             .filter((p) => p.id !== room.dealerId)
@@ -335,6 +354,17 @@ function App() {
         )}
         {room.phase === "lobby" && (
           <>
+            <div
+              className={readyExpired ? "ready-timer expired" : "ready-timer"}
+            >
+              {readyExpired ? (
+                <>หมดเวลารอ · เริ่มได้เฉพาะผู้พร้อม {readyPlayerCount} คน</>
+              ) : (
+                <>
+                  รอคอนเฟิร์มอีก <b>{readyCountdown}</b> วินาที
+                </>
+              )}
+            </div>
             <div className="roles">
               <span>บทบาท</span>
               {isDealer ? (
@@ -411,10 +441,14 @@ function App() {
             {isDealer && (
               <button
                 className="gold start"
-                disabled={!allReady}
+                disabled={!canStart}
                 onClick={() => act("start")}
               >
-                {allReady ? "แจกไพ่ / เริ่มขา" : "รอทุกคนคอนเฟิร์ม"}
+                {allReady
+                  ? "แจกไพ่ / เริ่มขา"
+                  : readyExpired
+                    ? "เริ่มเฉพาะคนที่พร้อม"
+                    : "รอทุกคนคอนเฟิร์ม"}
               </button>
             )}
           </>
