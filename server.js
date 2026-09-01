@@ -383,6 +383,7 @@ io.on("connection", (socket) => {
         beginDealerAuto(r);
     } else if (a.type === "ready") {
       if (r.phase !== "lobby") return fail("กดพร้อมได้ในหน้าเตรียมตัว");
+      if (p.id === r.dealerId) return fail("เจ้ามือไม่ต้องกดพร้อม");
       p.ready = !p.ready;
       r.message = p.ready ? `${p.name} พร้อมแล้ว` : `${p.name} ยกเลิกพร้อม`;
       emit(r);
@@ -390,13 +391,16 @@ io.on("connection", (socket) => {
       if (r.phase !== "lobby") return fail("เกมเริ่มแล้ว");
       if (p.id !== r.dealerId) return fail("เจ้ามือเท่านั้นที่เริ่มได้");
       if (r.players.length < 2) return fail("ต้องมีผู้เล่นอย่างน้อย 1 คน");
-      if (!p.ready) return fail("เจ้ามือต้องกดพร้อมก่อนเริ่ม");
       const readyExpired = Date.now() >= r.readyDeadline;
-      if (!readyExpired && r.players.some((x) => !x.ready))
-        return fail("ทุกคนต้องกดพร้อมก่อนเริ่ม");
-      const activePlayers = r.players.filter((x) => x.ready);
-      if (!activePlayers.some((x) => x.id !== r.dealerId))
+      const playingSeats = r.players.filter((x) => x.id !== r.dealerId);
+      if (r.dealerAuto && playingSeats.some((x) => !x.ready))
+        return fail("โหมดเจ้ามือออโต้ต้องรอขาเล่นพร้อมครบทุกคน");
+      if (!readyExpired && playingSeats.some((x) => !x.ready))
+        return fail("ขาเล่นทุกคนต้องกดพร้อมก่อนเริ่ม");
+      const readyPlayers = playingSeats.filter((x) => x.ready);
+      if (!readyPlayers.length)
         return fail("ต้องมีขาเล่นที่กดพร้อมอย่างน้อย 1 คน");
+      const activePlayers = [p, ...readyPlayers];
       if (!r.shoeStarted || r.shufflePending) {
         r.deck = newDeck(r.shoeDecks);
         r.shoeStarted = true;
@@ -407,7 +411,7 @@ io.on("connection", (socket) => {
       r.phase = "playing";
       r.queue = [];
       r.players.forEach((x) => {
-        if (!x.ready) {
+        if (x.id !== r.dealerId && !x.ready) {
           x.hands = [];
           return;
         }
