@@ -648,6 +648,24 @@ input {
   background: #17613e;
   color: #dcffeb;
 }
+.auto-toggle {
+  border-color: #ffffff2a;
+  background: #19261f;
+  color: #aebbb3;
+}
+.auto-toggle.enabled {
+  border-color: #5add9777;
+  background: #17613e;
+  color: #dcffeb;
+  box-shadow: 0 0 16px #45d68a22;
+}
+.actions-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
 .countdown {
   justify-content: center;
   border: 1px solid #d9ae5540;

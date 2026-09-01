@@ -381,18 +381,28 @@ function App() {
               )}
             </div>
             {isDealer && (
-              <div className="shoe-select">
-                <span>จำนวนสำรับ</span>
-                {[1, 2, 4, 6, 8].map((n) => (
-                  <button
-                    className={room.shoeDecks === n ? "selected" : ""}
-                    onClick={() => act("shoe", n)}
-                    key={n}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="shoe-select">
+                  <span>จำนวนสำรับ</span>
+                  {[1, 2, 4, 6, 8].map((n) => (
+                    <button
+                      className={room.shoeDecks === n ? "selected" : ""}
+                      onClick={() => act("shoe", n)}
+                      key={n}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className={
+                    room.dealerAuto ? "auto-toggle enabled" : "auto-toggle"
+                  }
+                  onClick={() => act("dealerAuto")}
+                >
+                  เจ้ามือออโต้: {room.dealerAuto ? "เปิด" : "ปิด"}
+                </button>
+              </>
             )}
             {!isDealer && (
               <>
@@ -459,28 +469,46 @@ function App() {
           </div>
         )}
         {room.phase === "playing" && (
-          <div className="actions">
-            <button disabled={!isTurn} onClick={() => act("hit")}>
-              HIT <small>จั่ว</small>
-            </button>
-            <button disabled={!isTurn} onClick={() => act("stand")}>
-              STAND <small>พอ</small>
-            </button>
-            {!isDealer && (
-              <button disabled={!isTurn} onClick={() => act("double")}>
-                DOUBLE <small>เดิมพัน ×2</small>
+          <div className="actions-wrap">
+            {isDealer && (
+              <button
+                className={
+                  room.dealerAuto ? "auto-toggle enabled" : "auto-toggle"
+                }
+                onClick={() => act("dealerAuto")}
+              >
+                เจ้ามือออโต้: {room.dealerAuto ? "เปิด" : "ปิด"}
               </button>
             )}
-            {surrenderOK && (
-              <button className="surrender" onClick={() => act("surrender")}>
-                SURRENDER <small>ยอมแพ้ −ครึ่งหนึ่ง</small>
+            <div className="actions">
+              <button
+                disabled={!isTurn || (isDealer && room.dealerAuto)}
+                onClick={() => act("hit")}
+              >
+                HIT <small>จั่ว</small>
               </button>
-            )}
-            {splitOK && (
-              <button className="split" onClick={() => act("split")}>
-                SPLIT <small>แยกไพ่</small>
+              <button
+                disabled={!isTurn || (isDealer && room.dealerAuto)}
+                onClick={() => act("stand")}
+              >
+                STAND <small>พอ</small>
               </button>
-            )}
+              {!isDealer && (
+                <button disabled={!isTurn} onClick={() => act("double")}>
+                  DOUBLE <small>เดิมพัน ×2</small>
+                </button>
+              )}
+              {surrenderOK && (
+                <button className="surrender" onClick={() => act("surrender")}>
+                  SURRENDER <small>ยอมแพ้ −ครึ่งหนึ่ง</small>
+                </button>
+              )}
+              {splitOK && (
+                <button className="split" onClick={() => act("split")}>
+                  SPLIT <small>แยกไพ่</small>
+                </button>
+              )}
+            </div>
           </div>
         )}
         <EmojiBar onPick={(e) => socket.emit("emoji", e)} />
