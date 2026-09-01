@@ -89,6 +89,7 @@ const handOf = (r, q) =>
   playerOf(r, q?.playerId)?.hands.find((h) => h.id === q?.handId);
 
 function finish(r) {
+  r.autoToken = (r.autoToken || 0) + 1;
   const dealer = playerOf(r, r.dealerId),
     dh = dealer.hands[0],
     ds = score(dh),
@@ -160,6 +161,7 @@ function advance(r) {
   if (q) {
     r.message = `ตาของ ${playerOf(r, q.playerId).name}`;
     emit(r);
+    if (q.playerId === r.dealerId && r.dealerAuto) beginDealerAuto(r);
     return;
   }
   const dealer = playerOf(r, r.dealerId),
@@ -167,6 +169,40 @@ function advance(r) {
   r.message = `ตาเจ้ามือ ${dealer.name}`;
   if (score(h) >= 17) finish(r);
   else emit(r);
+}
+
+function beginDealerAuto(r) {
+  const token = (r.autoToken || 0) + 1;
+  r.autoToken = token;
+  const step = () => {
+    setTimeout(() => {
+      const q = current(r);
+      if (
+        r.phase !== "playing" ||
+        !r.dealerAuto ||
+        r.autoToken !== token ||
+        q?.playerId !== r.dealerId
+      )
+        return;
+      const dealer = playerOf(r, r.dealerId);
+      const hand = handOf(r, q);
+      if (!dealer || !hand) return;
+      if (score(hand) < 17) {
+        hand.cards.push(r.deck.pop());
+        r.message = `${dealer.name} จั่วอัตโนมัติ · ${score(hand)} แต้ม`;
+        emit(r);
+        step();
+      } else {
+        hand.done = true;
+        r.message = `${dealer.name} หยุดที่ ${score(hand)} แต้ม`;
+        emit(r);
+        setTimeout(() => {
+          if (r.phase === "playing" && r.autoToken === token) finish(r);
+        }, 500);
+      }
+    }, 700);
+  };
+  step();
 }
 
 function validName(raw) {
@@ -190,6 +226,8 @@ io.on("connection", (socket) => {
       dealerRequest: null,
       phase: "lobby",
       shoeDecks: 4,
+      dealerAuto: false,
+      autoToken: 0,
       shoeStarted: false,
       shoeNumber: 0,
       cutRemaining: 52,
@@ -290,6 +328,8 @@ io.on("connection", (socket) => {
       p.role = "player";
       next.role = "dealer";
       r.dealerId = next.id;
+      r.dealerAuto = false;
+      r.autoToken++;
       r.dealerRequest = null;
       r.readyDeadline = Date.now() + 60_000;
       r.players.forEach((x) => (x.ready = false));
@@ -327,6 +367,20 @@ io.on("connection", (socket) => {
       r.shufflePending = true;
       p.ready = false;
       emit(r);
+    } else if (a.type === "dealerAuto") {
+      if (p.id !== r.dealerId) return fail("เฉพาะเจ้ามือเปิดโหมดอัตโนมัติได้");
+      r.dealerAuto = !r.dealerAuto;
+      r.autoToken++;
+      r.message = r.dealerAuto
+        ? "เปิดเจ้ามืออัตโนมัติแล้ว"
+        : "ปิดเจ้ามืออัตโนมัติแล้ว";
+      emit(r);
+      if (
+        r.dealerAuto &&
+        r.phase === "playing" &&
+        current(r)?.playerId === r.dealerId
+      )
+        beginDealerAuto(r);
     } else if (a.type === "ready") {
       if (r.phase !== "lobby") return fail("กดพร้อมได้ในหน้าเตรียมตัว");
       p.ready = !p.ready;
@@ -379,6 +433,8 @@ io.on("connection", (socket) => {
         h = handOf(r, q);
       if (!q || q.playerId !== p.id) return fail("ยังไม่ถึงตาของคุณ");
       const isDealer = p.id === r.dealerId;
+      if (isDealer && r.dealerAuto)
+        return fail("เจ้ามืออัตโนมัติกำลังทำงาน กรุณาปิดออโต้ก่อน");
       if (a.type === "hit") {
         if (isDealer && score(h) >= 17)
           return fail("เจ้ามือต้องหยุดเมื่อแต้มตั้งแต่ 17");
