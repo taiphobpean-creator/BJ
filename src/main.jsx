@@ -196,17 +196,17 @@ function App() {
       !isDealer &&
       !currentHand?.split &&
       currentHand?.cards.length === 2,
-    allReady = room.players.every((p) => p.ready),
+    playingSeats = room.players.filter((p) => p.id !== room.dealerId),
+    allReady = playingSeats.length > 0 && playingSeats.every((p) => p.ready),
     readyCountdown = room.readyDeadline
       ? Math.max(0, Math.ceil((room.readyDeadline - clock) / 1000))
       : 0,
     readyExpired = readyCountdown === 0,
-    readyPlayerCount = room.players.filter((p) => p.ready).length,
+    readyPlayerCount = playingSeats.filter((p) => p.ready).length,
     canStart =
       isDealer &&
-      mine?.ready &&
-      (allReady || readyExpired) &&
-      room.players.some((p) => p.id !== room.dealerId && p.ready),
+      (allReady || (readyExpired && !room.dealerAuto)) &&
+      readyPlayerCount > 0,
     countdown = room.resultEndsAt
       ? Math.max(0, Math.ceil((room.resultEndsAt - clock) / 1000))
       : 0;
@@ -244,13 +244,6 @@ function App() {
         </div>
         <div className="dealer">
           <PlayerName p={dealer} reactions={reactions} />
-          {room.phase === "lobby" && dealer && (
-            <span
-              className={dealer.ready ? "ready-badge ready" : "ready-badge"}
-            >
-              {dealer.ready ? "พร้อม" : "ยังไม่พร้อม"}
-            </span>
-          )}
           <div className="cards">
             {dealer?.hands?.[0]?.cards.map((c, i) => (
               <Card
@@ -440,14 +433,16 @@ function App() {
                 </div>
               </>
             )}
-            <button
-              className={
-                mine?.ready ? "ready-button confirmed" : "ready-button"
-              }
-              onClick={() => act("ready")}
-            >
-              {mine?.ready ? "✓ พร้อมแล้ว" : "กดคอนเฟิร์มพร้อม"}
-            </button>
+            {!isDealer && (
+              <button
+                className={
+                  mine?.ready ? "ready-button confirmed" : "ready-button"
+                }
+                onClick={() => act("ready")}
+              >
+                {mine?.ready ? "✓ พร้อมแล้ว" : "กดคอนเฟิร์มพร้อม"}
+              </button>
+            )}
             {isDealer && (
               <button
                 className="gold start"
@@ -456,9 +451,11 @@ function App() {
               >
                 {allReady
                   ? "แจกไพ่ / เริ่มขา"
-                  : readyExpired
-                    ? "เริ่มเฉพาะคนที่พร้อม"
-                    : "รอทุกคนคอนเฟิร์ม"}
+                  : room.dealerAuto
+                    ? "ออโต้รอทุกคนพร้อม"
+                    : readyExpired
+                      ? "เริ่มเฉพาะคนที่พร้อม"
+                      : "รอทุกคนคอนเฟิร์ม"}
               </button>
             )}
           </>
