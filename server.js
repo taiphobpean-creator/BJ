@@ -205,6 +205,61 @@ function beginDealerAuto(r) {
   step();
 }
 
+function dealRound(r, readyPlayers, automatic = false) {
+  const dealer = playerOf(r, r.dealerId);
+  const activePlayers = [dealer, ...readyPlayers];
+  if (!r.shoeStarted || r.shufflePending) {
+    r.deck = newDeck(r.shoeDecks);
+    r.shoeStarted = true;
+    r.shufflePending = false;
+    r.shoeNumber++;
+  }
+  r.round++;
+  r.phase = "playing";
+  r.queue = [];
+  r.players.forEach((x) => {
+    if (x.id !== r.dealerId && !x.ready) {
+      x.hands = [];
+      return;
+    }
+    x.hands =
+      x.id === r.dealerId
+        ? [makeHand(0)]
+        : Array.from({ length: x.spots }, () => makeHand(x.bet));
+    for (const h of x.hands) h.cards = [r.deck.pop(), r.deck.pop()];
+  });
+  for (const x of activePlayers.filter((x) => x.id !== r.dealerId))
+    for (const h of x.hands) r.queue.push({ playerId: x.id, handId: h.id });
+  r.queue.push({
+    playerId: r.dealerId,
+    handId: dealer.hands[0].id,
+  });
+  r.turn = 0;
+  r.message = `${automatic ? "แจกไพ่อัตโนมัติ" : "แจกไพ่แล้ว"} · ตาของ ${playerOf(r, current(r).playerId).name}`;
+  emit(r);
+}
+
+function autoStartIfReady(r) {
+  const seats = r.players.filter((x) => x.id !== r.dealerId);
+  if (!r.dealerAuto || r.phase !== "lobby" || !seats.length) return;
+  if (seats.some((x) => !x.ready)) return;
+  const expectedRound = r.round;
+  r.message = "พร้อมครบแล้ว · กำลังแจกไพ่อัตโนมัติ";
+  emit(r);
+  setTimeout(() => {
+    const currentSeats = r.players.filter((x) => x.id !== r.dealerId);
+    if (
+      r.phase !== "lobby" ||
+      r.round !== expectedRound ||
+      !r.dealerAuto ||
+      !currentSeats.length ||
+      currentSeats.some((x) => !x.ready)
+    )
+      return;
+    dealRound(r, currentSeats, true);
+  }, 700);
+}
+
 function validName(raw) {
   const n = String(raw || "").trim();
   return n.length >= 1 && n.length <= 20 ? n : null;
@@ -357,8 +412,12 @@ io.on("connection", (socket) => {
       emit(r);
     } else if (a.type === "shoe") {
       const n = Math.floor(+a.value);
-      if (p.id !== r.dealerId || r.phase === "playing")
+      if (p.id !== r.dealerId || r.phase !== "lobby")
         return fail("เฉพาะเจ้ามือเลือกจำนวนสำรับก่อนเริ่มได้");
+      if (r.shoeStarted && !r.shufflePending)
+        return fail(
+          "เปลี่ยนจำนวนสำรับได้ก่อนเริ่ม Shoe หรือเมื่อถึง Cut Card เท่านั้น",
+        );
       if (![1, 2, 4, 6, 8].includes(n)) return fail("จำนวนสำรับไม่ถูกต้อง");
       r.shoeDecks = n;
       r.cutRemaining = Math.ceil(n * 52 * 0.25);
@@ -381,12 +440,14 @@ io.on("connection", (socket) => {
         current(r)?.playerId === r.dealerId
       )
         beginDealerAuto(r);
+      if (r.dealerAuto && r.phase === "lobby") autoStartIfReady(r);
     } else if (a.type === "ready") {
       if (r.phase !== "lobby") return fail("กดพร้อมได้ในหน้าเตรียมตัว");
       if (p.id === r.dealerId) return fail("เจ้ามือไม่ต้องกดพร้อม");
       p.ready = !p.ready;
       r.message = p.ready ? `${p.name} พร้อมแล้ว` : `${p.name} ยกเลิกพร้อม`;
       emit(r);
+      if (p.ready && r.dealerAuto) autoStartIfReady(r);
     } else if (a.type === "start") {
       if (r.phase !== "lobby") return fail("เกมเริ่มแล้ว");
       if (p.id !== r.dealerId) return fail("เจ้ามือเท่านั้นที่เริ่มได้");
@@ -400,36 +461,7 @@ io.on("connection", (socket) => {
       const readyPlayers = playingSeats.filter((x) => x.ready);
       if (!readyPlayers.length)
         return fail("ต้องมีขาเล่นที่กดพร้อมอย่างน้อย 1 คน");
-      const activePlayers = [p, ...readyPlayers];
-      if (!r.shoeStarted || r.shufflePending) {
-        r.deck = newDeck(r.shoeDecks);
-        r.shoeStarted = true;
-        r.shufflePending = false;
-        r.shoeNumber++;
-      }
-      r.round++;
-      r.phase = "playing";
-      r.queue = [];
-      r.players.forEach((x) => {
-        if (x.id !== r.dealerId && !x.ready) {
-          x.hands = [];
-          return;
-        }
-        x.hands =
-          x.id === r.dealerId
-            ? [makeHand(0)]
-            : Array.from({ length: x.spots }, () => makeHand(x.bet));
-        for (const h of x.hands) h.cards = [r.deck.pop(), r.deck.pop()];
-      });
-      for (const x of activePlayers.filter((x) => x.id !== r.dealerId))
-        for (const h of x.hands) r.queue.push({ playerId: x.id, handId: h.id });
-      r.queue.push({
-        playerId: r.dealerId,
-        handId: playerOf(r, r.dealerId).hands[0].id,
-      });
-      r.turn = 0;
-      r.message = `ตาของ ${playerOf(r, current(r).playerId).name}`;
-      emit(r);
+      dealRound(r, readyPlayers);
     } else if (
       ["hit", "stand", "double", "split", "surrender"].includes(a.type)
     ) {
