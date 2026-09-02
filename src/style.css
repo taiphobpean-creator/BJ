@@ -643,6 +643,12 @@ input {
 .shoe-select > span {
   color: #9bad9f;
 }
+.shoe-select > span small {
+  display: block;
+  margin-top: 2px;
+  color: #d79a6b;
+  font-size: 0.58rem;
+}
 .ready-button.confirmed {
   border-color: #5add97;
   background: #17613e;

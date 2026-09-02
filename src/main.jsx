@@ -203,6 +203,7 @@ function App() {
       : 0,
     readyExpired = readyCountdown === 0,
     readyPlayerCount = playingSeats.filter((p) => p.ready).length,
+    canChangeShoe = !room.shoeStarted || room.shufflePending,
     canStart =
       isDealer &&
       (allReady || (readyExpired && !room.dealerAuto)) &&
@@ -376,10 +377,14 @@ function App() {
             {isDealer && (
               <>
                 <div className="shoe-select">
-                  <span>จำนวนสำรับ</span>
+                  <span>
+                    จำนวนสำรับ
+                    {!canChangeShoe && <small>ล็อกจนถึง Cut Card</small>}
+                  </span>
                   {[1, 2, 4, 6, 8].map((n) => (
                     <button
                       className={room.shoeDecks === n ? "selected" : ""}
+                      disabled={!canChangeShoe}
                       onClick={() => act("shoe", n)}
                       key={n}
                     >
